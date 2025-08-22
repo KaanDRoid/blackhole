@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 Binary lensing demo and Schwarzschild geodesic RK4 reference
 
 Contents:
@@ -19,4 +19,4 @@ python geodesic_rk4.py
 =======
 # blackhole
 GPU accelerated gravitational lensing demo (Python + ModernGL) with adaptive RK4 Schwarzschild geodesics
->>>>>>> 4a1e38544bdd1d92afb80fff6b6c84a194c59930
+
