@@ -1,0 +1,4 @@
+glfw
+moderngl
+numpy
+Pillow

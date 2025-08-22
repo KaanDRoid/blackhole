@@ -1,0 +1,100 @@
+#version 430
+layout(local_size_x=8, local_size_y=8) in;
+
+layout(rgba32f, binding=0) writeonly uniform image2D destImg;
+
+uniform float u_r_s; // Schwarzschild radius
+uniform float u_r_obs; // observer radius
+uniform float u_b_scale; // maps screen x to impact parameter
+uniform float u_step_phi; // initial phi step size
+uniform float u_tol; // adaptive tolerance for local error (units of r)
+uniform float u_min_step; // minimum allowed phi step
+uniform float u_max_step; // maximum allowed phi step
+uniform int u_max_steps;
+
+ivec2 imgSize() { return imageSize(destImg); }
+
+// sample background by azimuth phi -> color
+vec3 sample_background(float phi) {
+    float t = mod(phi / (2.0 * 3.14159265), 1.0);
+    float r = 0.5 + 0.5 * cos(6.2831853 * t);
+    float g = 0.5 + 0.5 * cos(6.2831853 * (t + 0.33));
+    float b = 0.5 + 0.5 * cos(6.2831853 * (t + 0.66));
+    return vec3(r,g,b);
+}
+
+// dr/dphi as in CPU reference
+float dr_dphi(float r, float L, float E, float r_s) {
+    float inside = E*E - (1.0 - r_s / r) * (L*L) / (r*r);
+    if (inside <= 0.0) return 0.0;
+    return (r*r / L) * sqrt(inside);
+}
+
+// RK4 step for r(phi) - integrate with step h
+float rk4_step(float r, float h, float L, float E, float r_s) {
+    float k1 = dr_dphi(r, L, E, r_s);
+    float k2 = dr_dphi(r + 0.5*h*k1, L, E, r_s);
+    float k3 = dr_dphi(r + 0.5*h*k2, L, E, r_s);
+    float k4 = dr_dphi(r + h*k3, L, E, r_s);
+    return r + (h/6.0)*(k1 + 2.0*k2 + 2.0*k3 + k4);
+}
+
+void main() {
+    ivec2 size = imgSize();
+    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+    if (pix.x >= size.x || pix.y >= size.y) return;
+
+    vec2 uv = (vec2(pix) + vec2(0.5)) / vec2(size);
+    // map x to impact parameter b in [-b_scale, b_scale]
+    float x = (uv.x * 2.0) - 1.0;
+    float b = x * u_b_scale;
+    float L = abs(b);
+    if (L < 1e-6) L = 1e-6;
+    float E = 1.0;
+
+    float r = u_r_obs;
+    float phi = 0.0;
+    float h = u_step_phi;
+    bool captured = false;
+    bool escaped = false;
+    int steps = 0;
+
+    // march inward with simple adaptive RK4 (embedded error estimate via step halving)
+    while (steps < u_max_steps) {
+        if (r <= u_r_s) { captured = true; break; }
+        // one full step
+        float r1 = rk4_step(r, -h, L, E, u_r_s);
+        // two half-steps
+        float r_half = rk4_step(r, -h*0.5, L, E, u_r_s);
+        float r2 = rk4_step(r_half, -h*0.5, L, E, u_r_s);
+        float err = abs(r2 - r1);
+        if (err <= u_tol) {
+            // accept r2
+            r = r2;
+            phi += h;
+            // increase step slowly
+            h = min(h * 1.5, u_max_step);
+        } else {
+            // reduce step and retry
+            h = max(h * 0.5, u_min_step);
+            if (h <= u_min_step + 1e-12) {
+                // forced accept to avoid infinite loop
+                r = r2;
+                phi += h;
+            }
+        }
+        if (isnan(r) || r <= 0.0) { captured = true; break; }
+        if (r > u_r_obs * 0.995 && phi > 0.1) { escaped = true; break; }
+        steps += 1;
+    }
+
+    vec4 outc;
+    if (captured) {
+        outc = vec4(0.0,0.0,0.0,1.0);
+    } else {
+        vec3 col = sample_background(phi);
+        outc = vec4(col, 1.0);
+    }
+
+    imageStore(destImg, pix, outc);
+}

@@ -1,0 +1,22 @@
+// Skeleton for a Schwarzschild null-geodesic RK4 integrator in a compute shader
+// This file is intentionally commented and structured to guide translation of the CPU integrator.
+
+/*
+Steps to implement in GLSL compute shader:
+1. For each pixel compute impact parameter b from screen coordinate.
+2. Set up ODE in form dr/dphi = r^2 / L * sqrt(E^2 - (1 - r_s/r) * L^2 / r^2)
+   where we use phi as independent variable. Take E = 1, L = b.
+3. Integrate r(phi) with RK4 from phi=0 at observer (r_obs large) toward decreasing r until
+   - r <= r_s -> captured (black)
+   - r > far_limit -> escaped; compute total deflection (phi_final - phi_initial) and map
+     to background sampling angle.
+4. Use appropriate numerical safeguards: small steps near periastron, clamp sqrt args.
+
+Notes:
+- For full 3D you'll need to rotate the ray plane into equatorial plane and back.
+- In compute shader prefer float precision; consider using double if supported.
+*/
+
+#version 430
+layout(local_size_x=8, local_size_y=8) in;
+// ... shader outline left as exercise. Use `geodesic_rk4.py` as CPU reference.

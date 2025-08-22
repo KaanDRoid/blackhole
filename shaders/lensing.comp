@@ -1,0 +1,44 @@
+#version 430
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba32f, binding = 0) writeonly uniform image2D destImg;
+uniform sampler2D backgroundTex;
+
+// Config
+const int MAX_LENSES = 8;
+uniform int u_lens_count;
+// flat arrays for compatibility with some GL drivers / host APIs
+uniform vec2 u_lens_pos_flat[MAX_LENSES]; // in normalized [0,1] screen coords
+uniform float u_lens_re_flat[MAX_LENSES]; // Einstein radius in normalized coords (screen units)
+uniform float u_bg_scale = 1.0;
+
+ivec2 imgSize() { return imageSize(destImg); }
+
+vec2 deflect_point_mass(vec2 x, vec2 x0, float Re) {
+    // thin-lens point mass deflection in normalized coords
+    vec2 d = x - x0;
+    float r2 = dot(d,d) + 1e-8;
+    return (Re*Re) * d / r2;
+}
+
+void main() {
+    ivec2 size = imgSize();
+    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+    if (pix.x >= size.x || pix.y >= size.y) return;
+
+    vec2 uv = (vec2(pix) + vec2(0.5)) / vec2(size);
+
+    // compute total deflection from N lenses
+    vec2 total_def = vec2(0.0);
+    for (int i = 0; i < u_lens_count; ++i) {
+        total_def += deflect_point_mass(uv, u_lens_pos_flat[i], u_lens_re_flat[i]);
+    }
+
+    vec2 src = uv - total_def;
+
+    // sample background (wrap)
+    vec2 bg_uv = fract(src * vec2(u_bg_scale, u_bg_scale));
+    vec3 col = texture(backgroundTex, bg_uv).rgb;
+
+    imageStore(destImg, pix, vec4(col, 1.0));
+}
