@@ -16,7 +16,3 @@ python main.py
 
 Run CPU geodesic reference (generates `geodesic_out.png`):
 python geodesic_rk4.py
-=======
-# blackhole
-GPU accelerated gravitational lensing demo (Python + ModernGL) with adaptive RK4 Schwarzschild geodesics
-
