@@ -1,4 +1,5 @@
-glfw
-moderngl
-numpy
-Pillow
+# Runtime dependencies; pytest is optional for the test suite.
+glfw>=2.7
+moderngl>=5.10
+numpy>=1.24
+Pillow>=10.0
