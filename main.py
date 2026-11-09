@@ -3,11 +3,9 @@ Keys:
 - N: single-lens mode
 - M: multi-lens mode
 - Arrow keys: move active lens
-- WASD: move lens 1 (legacy)
 - C: cycle active lens (multi mode)
-- Q/E: decrease/increase Re of active lens
-- U/O: decrease/increase Re of lens 1 (legacy)
-- + / - : add / remove lens (multi mode)
+- Q/E: decrease/increase Einstein radius (Re) of active lens
+- + / - : add / remove lens (multi mode, up to 8)
 - T/G: background scale up/down
 - S: save screenshot
 - ESC: exit
@@ -22,6 +20,7 @@ DEMO_DIR = os.path.dirname(__file__)
 SHADER_DIR = os.path.join(DEMO_DIR, 'shaders')
 
 WIDTH, HEIGHT = 800, 600
+MAX_LENSES = 8  # must match lensing.comp
 
 def load_shader(ctx, path):
     with open(path, 'r', encoding='utf-8') as f:
@@ -115,7 +114,7 @@ class Demo:
                 return
             # add / remove lens (multi mode)
             if key == glfw.KEY_KP_ADD or key == glfw.KEY_EQUAL:
-                if len(self.lens_pos) < 8:
+                if len(self.lens_pos) < MAX_LENSES:
                     self.lens_pos.append(np.array([0.5,0.5], dtype='f4'))
                     self.lens_re.append(0.02)
                     self.active_idx = len(self.lens_pos)-1
@@ -131,10 +130,10 @@ class Demo:
                 return
             # screenshot
             if key == glfw.KEY_S:
-                data = self.tex.read()
-                img = Image.frombytes('RGBA', (WIDTH, HEIGHT), data)
-                img = img.convert('RGB')
-                img.save('screenshot.png')
+                # texture is RGBA float32 with row 0 at the bottom of the window
+                data = np.frombuffer(self.tex.read(), dtype='f4').reshape(HEIGHT, WIDTH, 4)
+                rgb = (np.clip(data[:, :, :3], 0.0, 1.0) * 255).astype(np.uint8)
+                Image.fromarray(np.flipud(rgb)).save('screenshot.png')
                 print('Saved screenshot.png')
                 return
 
@@ -144,10 +143,11 @@ class Demo:
                 self.lens_pos[idx][0] -= step
             if key == glfw.KEY_RIGHT:
                 self.lens_pos[idx][0] += step
+            # uv.y = 0 is the bottom of the window
             if key == glfw.KEY_UP:
-                self.lens_pos[idx][1] -= step
-            if key == glfw.KEY_DOWN:
                 self.lens_pos[idx][1] += step
+            if key == glfw.KEY_DOWN:
+                self.lens_pos[idx][1] -= step
 
             # Einstein radius adjust for active lens
             if key == glfw.KEY_Q:
@@ -162,41 +162,18 @@ class Demo:
                 self.bg_scale /= 1.1
 
     def update_uniforms(self):
-        # send lens count
-        lens_count = len(self.lens_pos)
-        try:
-            self.comp['u_lens_count'] = int(lens_count)
-        except Exception:
-            pass
-        # pad to MAX_LENSES (8)
-        pos_flat = []
-        re_flat = []
-        for i in range(8):
-            if i < len(self.lens_pos):
-                pos_flat.extend([float(self.lens_pos[i][0]), float(self.lens_pos[i][1])])
-                re_flat.append(float(self.lens_re[i]))
-            else:
-                pos_flat.extend([0.0, 0.0])
-                re_flat.append(0.0)
-        # try per-element writes
-        wrote = False
-        try:
-            for i in range(8):
-                self.comp[f'u_lens_pos_flat[{i}]'].value = (pos_flat[2*i], pos_flat[2*i+1])
-                self.comp[f'u_lens_re_flat[{i}]'].value = re_flat[i]
-            wrote = True
-        except Exception:
-            wrote = False
-        if not wrote:
-            try:
-                for i in range(8):
-                    self.comp.uniforms.get(f'u_lens_pos_flat[{i}]').value = (pos_flat[2*i], pos_flat[2*i+1])
-            except Exception:
-                pass
-        try:
-            self.comp['u_bg_scale'] = float(self.bg_scale)
-        except Exception:
-            pass
+        # single mode only uses the first lens
+        count = 1 if self.mode == 'single' else len(self.lens_pos)
+        pos = [(float(p[0]), float(p[1])) for p in self.lens_pos]
+        re_ = [float(r) for r in self.lens_re]
+        # pad to MAX_LENSES as declared in lensing.comp; moderngl exposes
+        # uniform arrays by base name, so the whole array is written at once
+        pos += [(0.0, 0.0)] * (MAX_LENSES - len(pos))
+        re_ += [0.0] * (MAX_LENSES - len(re_))
+        self.comp['u_lens_count'].value = count
+        self.comp['u_lens_pos_flat'].value = pos
+        self.comp['u_lens_re_flat'].value = re_
+        self.comp['u_bg_scale'].value = float(self.bg_scale)
 
     def run(self):
         while not glfw.window_should_close(self.win):
@@ -206,9 +183,8 @@ class Demo:
             self.update_uniforms()
 
             # bind image and background
-            self.ctx.bindings = []
             # write to image unit 0
-            self.ctx.bind_image(0, self.tex, read=False, write=True)
+            self.tex.bind_to_image(0, read=False, write=True)
             # background in location 0
             self.bg.use(location=0)
 
