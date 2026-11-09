@@ -7,6 +7,13 @@ venv/
 .idea/
 .DS_Store
 
-# rendered output
+# Local renders. Only curated assets are versioned.
 *.png
 *.jpg
+*.webp
+*.mp4
+!assets/*.png
+!assets/*.webp
+!assets/*.mp4
+.pytest_cache/
+.ruff_cache/
