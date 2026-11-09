@@ -11,7 +11,7 @@ import numpy as np
 from . import physics
 
 SHADER_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "shaders")
-STYLES = {"physical": 0, "cyberpunk": 1}
+STYLES = {"physical": 0, "cyberpunk": 1, "terminal": 2}
 
 
 def load_shader(name="raytrace.comp"):
@@ -86,7 +86,7 @@ class GpuTracer:
         _, fmax = physics.flux_peak(scene.r_out)
         tan_half = math.tan(math.radians(scene.fov) / 2)
         style = STYLES[scene.style]
-        tex_amp = scene.tex_amp if scene.tex_amp is not None else (0.0 if style == 0 else 0.85)
+        tex_amp = scene.tex_amp if scene.tex_amp is not None else (0.0 if style == 0 else (0.45 if style == 2 else 0.85))
 
         s = self._set
         s("u_size", (w, h))

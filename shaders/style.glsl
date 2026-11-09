@@ -85,6 +85,18 @@ vec3 neon_palette(float x) {
     return mix(c4, c5, smoothstep(1.10, 1.45, x));
 }
 
+// Amber phosphor (P3-like) ramp for the terminal style: dim brown, the
+// #ffb000 amber of the profile terminal, then a pale overdriven core.
+const vec3 AMBER = vec3(1.0, 0.434, 0.0);   // #ffb000 in linear RGB
+const vec3 CYAN = vec3(0.05, 0.89, 1.0);    // #3ff2ff in linear RGB
+
+vec3 phosphor(float v) {
+    const vec3 dim = vec3(0.28, 0.10, 0.0);
+    const vec3 hot = vec3(1.0, 0.80, 0.45);
+    return v < 1.0 ? mix(dim, AMBER, smoothstep(0.0, 1.0, v))
+                   : mix(AMBER, hot, smoothstep(1.0, 2.2, v));
+}
+
 // ---------------------------------------------------------- disk texture
 
 float disk_layer(float r, float phi, float seed) {
@@ -115,6 +127,13 @@ vec3 disk_color(Hit h) {
     float tex = disk_texture(h.r, h.phi_disk);
     if (u_style == 0) {
         return blackbody(u_t_peak * g * t_rel) * lum * tex;
+    }
+    if (u_style == 2) {
+        // terminal: single amber phosphor, brightness carries g^4 F; images
+        // after the first equatorial crossing are drawn in the cyan accent
+        float v = pow(lum, 0.55) * tex;
+        vec3 ink = h.order >= 1 ? mix(phosphor(v), CYAN, 0.75) * 0.6 : phosphor(v);
+        return ink * v * 1.4;
     }
     // cyberpunk: palette instead of a blackbody, compressed dynamic range
     return neon_palette(g * t_rel) * pow(lum, 0.6) * tex * 1.6;
@@ -208,6 +227,27 @@ vec3 sky_cyberpunk(vec3 d) {
     return col;
 }
 
+// Terminal sky: a coordinate graticule on the celestial sphere, drawn like a
+// vector display, plus sparse dim stars. Lensing bends the grid lines, so the
+// background doubles as a map of where escaped rays came from.
+vec3 sky_terminal(vec3 d) {
+    float lat = asin(clamp(d.z, -1.0, 1.0));
+    float lon = atan(d.y, d.x);
+    const float step_deg = 10.0;
+    float s = radians(step_deg);
+    float w = 1.4 * u_pix_angle;                       // line half-width, rad
+    float dlat = abs(fract(lat / s + 0.5) - 0.5) * s;
+    float dlon = abs(fract(lon / s + 0.5) - 0.5) * s * max(cos(lat), 0.05);
+    float line = max(1.0 - smoothstep(0.0, w, dlat), 1.0 - smoothstep(0.0, w, dlon));
+    float equator = 1.0 - smoothstep(0.0, 1.6 * w, abs(lat));
+    vec3 col = vec3(0.004, 0.0015, 0.0);
+    col += AMBER * 0.10 * line + AMBER * 0.22 * equator;
+    float lum = dot(starfield(d), vec3(0.3333));
+    col += AMBER * 0.5 * lum;
+    return col;
+}
+
 vec3 background(vec3 d) {
+    if (u_style == 2) return sky_terminal(d);
     return u_style == 0 ? sky_physical(d) : sky_cyberpunk(d);
 }
