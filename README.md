@@ -1,12 +1,12 @@
 # blackhole
 
-![Schwarzschild black hole with a neon accretion disk](assets/blackhole_cyberpunk.png)
+![Schwarzschild black hole rendered in an amber terminal window](assets/blackhole_terminal.png)
 
-A Schwarzschild ray tracer in Python and GLSL. Camera rays follow null geodesics through their turning points, hit a thin accretion disk, escape to a background sky, or cross the horizon. The disk has a zero-torque temperature profile and relativistic Doppler beaming. The default view maps its shifted temperature to magenta, cyan and violet rather than blackbody colors.
+A Schwarzschild ray tracer in Python and GLSL. Camera rays follow null geodesics through their turning points, hit a thin accretion disk, escape to a background sky, or cross the horizon. The disk has a zero-torque temperature profile and relativistic Doppler beaming. The default `terminal` style draws it as a single amber phosphor inside a retro CRT window: brightness follows the observed bolometric intensity, images formed after the first equatorial crossing are drawn in cyan, and the sky is a celestial coordinate grid so the lensing of escaped rays stays visible. The readout under the image (critical impact parameter, ISCO radius, range of the redshift factor `g` on the primary image) is computed from the traced rays.
 
 ![Five-second black hole loop](assets/blackhole_loop.webp)
 
-[Download the 1280x720 MP4](assets/blackhole_loop.mp4). The camera oscillates slowly and a differentially rotating disk texture cross-fades periodically. The 640x360 inline preview is about 1.5 MB; the full loop is five seconds at 30 fps.
+[Download the 1280x720 MP4](assets/blackhole_loop.mp4). The camera oscillates slowly and a differentially rotating disk texture cross-fades periodically. The 720x405 inline preview is about 1.1 MB; the full loop is five seconds at 30 fps.
 
 ## Physics model
 
@@ -61,13 +61,13 @@ The physical photon travels opposite to the backwards-traced camera ray, so the 
 
 | Included in the model | Presentation choices |
 | --- | --- |
-| Schwarzschild null geodesics, capture and escape | Neon palette indexed by `g T_emit` |
-| Primary, secondary and further equatorial crossings | Procedural distant skyline and perspective grid |
+| Schwarzschild null geodesics, capture and escape | Amber phosphor ramp (terminal) or neon palette indexed by `g T_emit` (cyberpunk) |
+| Primary, secondary and further equatorial crossings | Cyan coloring of secondary and higher images; celestial grid, skyline and floor grid backgrounds |
 | Keplerian orbital velocity and gravitational/Doppler shift | Periodic sheared noise and radial texture lanes |
-| Zero-torque thin-disk flux profile | Gaussian bloom, chromatic aberration, scanlines and vignette |
-| Bolometric `g^4` intensity factor | Exposure, tone mapping and nonlinear intensity compression in neon mode |
+| Zero-torque thin-disk flux profile | Terminal window frame, Gaussian bloom, chromatic aberration, scanlines and vignette |
+| Bolometric `g^4` intensity factor | Exposure, tone mapping and nonlinear intensity compression in the stylized modes |
 
-`--style physical` uses the same rays and redshift, a smooth disk and an approximate blackbody RGB fit instead of the neon palette. It is not calibrated spectral photometry: the peak temperature and flux normalization are arbitrary, and a single RGB color approximates a spectrum. The neon mode additionally compresses `g^4 F` with a power of `0.6` for display. Neither mode includes spin, disk thickness, absorption, scattering, returning radiation, polarization, time-of-flight differences or fluid dynamics. The disk is opaque and emits isotropically in its rest frame. The background is a direction-only sky at infinity, not a city near the hole. Motion is a periodic presentation loop, not a time-dependent disk simulation.
+`--style physical` uses the same rays and redshift, a smooth disk and an approximate blackbody RGB fit instead of the neon palette. It is not calibrated spectral photometry: the peak temperature and flux normalization are arbitrary, and a single RGB color approximates a spectrum. For display, the terminal style compresses `g^4 F` with a power of `0.55` and the cyberpunk style with `0.6`; both modulate it with a periodic disk texture. Neither mode includes spin, disk thickness, absorption, scattering, returning radiation, polarization, time-of-flight differences or fluid dynamics. The disk is opaque and emits isotropically in its rest frame. The background is a direction-only sky at infinity, not a city near the hole. Motion is a periodic presentation loop, not a time-dependent disk simulation.
 
 <details>
 <summary>Blackbody-colored view</summary>
@@ -105,10 +105,11 @@ Python 3.10+ and an OpenGL 4.3 driver are required for the GPU renderer. No wind
 pip install -r requirements.txt
 python render.py --out blackhole.png
 python render.py --style physical --out physical.png
+python render.py --style cyberpunk --out neon.png
 
 # Five-second loop and a small inline preview
-python render.py --width 1280 --height 720 --ss 2 --frames 150 --fps 30 \
-  --out loop.mp4 --webp loop.webp --webp-width 640 --webp-quality 65
+python render.py --width 1280 --height 720 --ss 2 --fov 24 --frames 150 --fps 30 \
+  --out loop.mp4 --webp loop.webp --webp-width 720 --webp-quality 70
 
 # Disable presentation effects or change the geometry
 python render.py --inclination 75 --r-obs 40 --fov 24 \
@@ -126,13 +127,13 @@ uv run --with moderngl --with numpy --with pillow python render.py
 uv run --with moderngl --with numpy --with pillow --with pytest python -m pytest -q
 ```
 
-`--ss` is the supersampling factor per axis, default 2. The hero uses 3. `--sway` controls periodic camera motion; `--time` selects a still's disk-texture phase; `--exposure` fixes exposure explicitly. See `python render.py --help` for all options. Animation uses fixed exposure from the first frame, endpoint-matched camera motion and a smooth periodic cross-fade of two sheared texture layers. The last encoded frame precedes the first by one frame interval; no duplicate endpoint frame is stored. The renderer refuses output if rays exhaust the integration budget.
+`--ss` is the supersampling factor per axis, default 2. The hero uses `--ss 3 --fov 24`. `--sway` controls periodic camera motion; `--time` selects a still's disk-texture phase; `--exposure` fixes exposure explicitly. See `python render.py --help` for all options. Animation uses fixed exposure from the first frame, endpoint-matched camera motion and a smooth periodic cross-fade of two sheared texture layers. The last encoded frame precedes the first by one frame interval; no duplicate endpoint frame is stored. The renderer refuses output if rays exhaust the integration budget.
 
 The vectorized CPU reference is `blackhole/physics.py`. It returns status, emission radius, redshift, crossing order and escaped direction for a batch of rays. It needs only NumPy and does not open an OpenGL context. `tests/test_physics.py` exercises it on CPU; GPU tests skip when no suitable context is available, but shader compilation failures are test failures. The full styled CLI uses the GPU.
 
 ### Timing
 
-The 150-frame 1280x720 loop at 2x supersampling rendered in 213.1 s, or 215.9 s including MP4 and WebP encoding. On the Radeon 780M, the 1920x1080 hero at 3x supersampling traced in 0.34 s and took 3.38 s for CPU post-processing and PNG output. A 1280x720 physical still at 3x took 0.17 s plus 1.02 s. These are single warm-driver measurements, not a benchmark suite. Compute dispatches are tiled and synchronized; post-processing is NumPy FFT blur and image filtering. The low-resolution NumPy reference check took about 0.10 s for 20,736 rays.
+The 150-frame 1280x720 terminal loop at 2x supersampling rendered in 207.0 s, or 212.1 s including MP4 and WebP encoding. On the Radeon 780M, the 1920x1080 terminal hero (`--ss 3 --fov 24`) traced in 0.55 s and took 4.26 s for post-processing, framing and PNG output. A 1280x720 physical still at 3x took 0.17 s plus 1.02 s. These are single warm-driver measurements, not a benchmark suite. Compute dispatches are tiled and synchronized; post-processing is NumPy FFT blur and image filtering. The low-resolution NumPy reference check took about 0.10 s for 20,736 rays.
 
 ## Interactive thin-lens demo
 
@@ -158,6 +159,7 @@ blackhole/
   physics.py                vectorized NumPy reference, disk flux and redshift
   gpu.py                    headless ModernGL host and camera configuration
   post.py                   bloom, tone mapping and display effects
+  frame.py                  terminal window frame and readout for the terminal style
 shaders/
   raytrace.comp             per-pixel camera and compute entry point
   geodesic.glsl             ray integration, crossings and redshift

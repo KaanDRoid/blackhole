@@ -1,7 +1,8 @@
 """Render a Schwarzschild black hole with a thin accretion disk.
 
 Examples:
-    python render.py                                   # 1920x1080 still, cyberpunk style
+    python render.py                                   # 1920x1080 still, terminal style
+    python render.py --style cyberpunk --out neon.png
     python render.py --style physical --out physical.png
     python render.py --frames 150 --fps 30 --width 1280 --height 720 --out loop.mp4 --webp loop.webp
 """
@@ -18,7 +19,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from blackhole import post
+from blackhole import frame, post
 from blackhole.gpu import GpuTracer, Scene
 
 
@@ -27,7 +28,7 @@ def parse_args(argv=None):
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--height", type=int, default=1080)
     p.add_argument("--ss", type=int, default=2, help="supersampling factor per axis")
-    p.add_argument("--style", choices=["cyberpunk", "physical"], default="cyberpunk")
+    p.add_argument("--style", choices=["terminal", "cyberpunk", "physical"], default="terminal")
     p.add_argument("--inclination", type=float, default=84.0, help="degrees from the disk normal")
     p.add_argument("--azimuth", type=float, default=0.0)
     p.add_argument("--r-obs", type=float, default=30.0, help="observer radius in r_s")
@@ -62,7 +63,7 @@ def parse_args(argv=None):
     if a.frames and (a.inclination + abs(0.35 * a.sway) > 89.5 or a.inclination - abs(0.35 * a.sway) < 0):
         p.error("camera sway must keep the inclination between 0 and 89.5 degrees")
     cyber = a.style == "cyberpunk"
-    for name, default in (("bloom", True), ("chromatic", cyber), ("scanlines", cyber)):
+    for name, default in (("bloom", True), ("chromatic", cyber), ("scanlines", cyber)):  # terminal: frame adds scanlines
         if getattr(a, name) is None:
             setattr(a, name, default)
     if a.out is None:
@@ -70,19 +71,37 @@ def parse_args(argv=None):
     return a
 
 
+def view_size(a):
+    """Size of the traced image; the terminal style traces only its viewport."""
+    if a.style == "terminal":
+        return frame.layout(a.width, a.height)[-1][2:]
+    return a.width, a.height
+
+
 def make_scene(a, phase=0.0):
     sway = np.sin(2 * np.pi * phase)
-    return Scene(width=a.width, height=a.height, r_obs=a.r_obs,
+    w, h = view_size(a)
+    return Scene(width=w, height=h, r_obs=a.r_obs,
                  inclination=a.inclination + 0.35 * a.sway * np.cos(2 * np.pi * phase) * (a.frames > 0),
                  azimuth=a.azimuth + a.sway * sway * (a.frames > 0),
                  fov=a.fov, r_out=a.r_out, style=a.style, time=phase if a.frames else a.time,
                  t_peak=a.t_peak)
 
 
-def finish(a, color, exposure):
+def finish(a, color, aux, exposure):
     hdr = post.downsample(color[..., :3], a.ss)
-    return post.finish(hdr, exposure, do_bloom=a.bloom, do_ca=a.chromatic,
-                       do_scanlines=a.scanlines, do_vignette=a.style == "cyberpunk")
+    img = post.finish(hdr, exposure, do_bloom=a.bloom, do_ca=a.chromatic,
+                      do_scanlines=a.scanlines, do_vignette=a.style != "physical")
+    if a.style != "terminal":
+        return img
+    primary = (aux[..., 0] == 2) & (aux[..., 1] == 0)
+    g = aux[..., 2][primary]
+    g_range = f"{g.min():.2f}..{g.max():.2f}" if g.size else "n/a"
+    return frame.compose(
+        img, a.width, a.height,
+        prompt=f"blackhole.exe --metric schwarzschild --incl {a.inclination:.0f} --r-obs {a.r_obs:.0f}",
+        readout=[("B_CRIT", f"{1.5 * np.sqrt(3):.4f}"), ("ISCO", "3.000"), ("G", g_range)],
+        legend=[("[ PRIMARY ]", frame.AMBER), ("[ SECONDARY+ ]", frame.CYAN)])
 
 
 def check_resolved(aux):
@@ -97,7 +116,7 @@ def render_still(a, tracer):
     check_resolved(aux)
     t1 = time.perf_counter()
     exposure = a.exposure or post.auto_exposure(color)
-    img = finish(a, color, exposure)
+    img = finish(a, color, aux, exposure)
     Image.fromarray(img).save(a.out)
     t2 = time.perf_counter()
     print(f"{a.out}: {a.width}x{a.height} ss={a.ss}  trace {t1 - t0:.2f} s, post {t2 - t1:.2f} s")
@@ -115,7 +134,7 @@ def render_animation(a, tracer):
         check_resolved(aux)
         if exposure is None:
             exposure = post.auto_exposure(color)  # fixed from frame 0, no flicker
-        img = finish(a, color, exposure)
+        img = finish(a, color, aux, exposure)
         Image.fromarray(img).save(os.path.join(tmp, f"f{i:04d}.png"))
         if (i + 1) % 15 == 0 or i == 0:
             print(f"frame {i + 1}/{a.frames}", flush=True)
