@@ -4,9 +4,9 @@
 
 A Schwarzschild ray tracer in Python and GLSL. Camera rays follow null geodesics through their turning points, hit a thin accretion disk, escape to a background sky, or cross the horizon. The disk has a zero-torque temperature profile and relativistic Doppler beaming. The default `terminal` style draws it as a single amber phosphor inside a retro CRT window: brightness follows the observed bolometric intensity, images formed after the first equatorial crossing are drawn in cyan, and the sky is a celestial coordinate grid so the lensing of escaped rays stays visible. The readout under the image (critical impact parameter, ISCO radius, range of the redshift factor `g` on the primary image) is computed from the traced rays.
 
-![Five-second black hole loop](assets/blackhole_loop.webp)
+![Five-second black hole loop](assets/blackhole_terminal_loop.webp)
 
-[Download the 1280x720 MP4](assets/blackhole_loop.mp4). The camera oscillates slowly and a differentially rotating disk texture cross-fades periodically. The 720x405 inline preview is about 1.1 MB; the full loop is five seconds at 30 fps.
+[Download the 1280x720 MP4](assets/blackhole_terminal_loop.mp4). The camera oscillates slowly and a differentially rotating disk texture cross-fades periodically. The 720x405 inline preview is about 1.1 MB; the full loop is five seconds at 30 fps.
 
 ## Physics model
 
